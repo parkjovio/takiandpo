@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>타키 포오와 용의 섬</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f8f3d6;
+      --blue: #101fa0;
+      --panel: #07105f;
+      --line: #f8f3d6;
+      --gold: #ffd84a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #0a0b10;
+      color: var(--ink);
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 14px;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px) 0 0 / 32px 32px,
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px) 0 0 / 32px 32px,
+        #0a0b10;
+    }
+
+    main {
+      width: min(100%, 1020px);
+      display: grid;
+      grid-template-columns: minmax(320px, 672px) minmax(260px, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .screen, .side, .pad {
+      border: 4px solid var(--line);
+      background: var(--blue);
+      box-shadow: 0 0 0 4px #000, 8px 8px 0 #000;
+    }
+
+    .screen { padding: 12px; }
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      display: block;
+      border: 4px solid #000;
+      background: #000;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .side {
+      min-height: 100%;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--gold);
+      font-size: 22px;
+      line-height: 1.15;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 15px;
+    }
+
+    .stat, .log {
+      border: 2px solid var(--line);
+      background: var(--panel);
+    }
+
+    .stat {
+      min-height: 42px;
+      padding: 8px;
+    }
+
+    .log {
+      min-height: 176px;
+      padding: 10px;
+      white-space: pre-line;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    button {
+      min-height: 42px;
+      border: 2px solid var(--line);
+      background: #111a86;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: inset -3px -3px 0 rgba(0,0,0,.45), inset 3px 3px 0 rgba(255,255,255,.12);
+    }
+
+    button:hover, button:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+
+    button:active {
+      transform: translate(1px, 1px);
+      box-shadow: inset 3px 3px 0 rgba(0,0,0,.45);
+    }
+
+    .pad {
+      width: max-content;
+      justify-self: center;
+      display: grid;
+      grid-template-columns: repeat(3, 58px);
+      grid-template-rows: repeat(3, 46px);
+      gap: 6px;
+      padding: 10px;
+    }
+
+    .pad button {
+      min-height: 46px;
+      font-size: 20px;
+    }
+
+    .up { grid-column: 2; }
+    .left { grid-column: 1; grid-row: 2; }
+    .right { grid-column: 3; grid-row: 2; }
+    .down { grid-column: 2; grid-row: 3; }
+
+    .hint {
+      margin: 0;
+      color: #d9e4ff;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 790px) {
+      body { padding: 8px; }
+      main { grid-template-columns: 1fr; }
+      .side { min-height: auto; }
+      h1 { font-size: 20px; }
+      .stats { grid-template-columns: repeat(4, 1fr); }
+      .stat { padding: 6px; font-size: 13px; }
+    }
+
+    @media (max-width: 460px) {
+      .screen, .side { padding: 8px; border-width: 3px; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .actions { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="screen" aria-label="게임 화면">
+      <canvas id="game" width="640" height="480"></canvas>
+    </section>
+
+    <aside class="side">
+      <h1>타키 포오와 용의 섬</h1>
+
+      <div class="stats" aria-live="polite">
+        <div class="stat" id="hp"></div>
+        <div class="stat" id="mp"></div>
+        <div class="stat" id="lv"></div>
+        <div class="stat" id="gold"></div>
+      </div>
+
+      <div class="log" id="log" aria-live="polite"></div>
+
+      <div class="actions">
+        <button id="act">말하기 / 조사</button>
+        <button id="attack">공격</button>
+        <button id="spell">마법</button>
+        <button id="run">도망</button>
+      </div>
+
+      <div class="pad" aria-label="이동 버튼">
+        <button class="up" data-dir="up" aria-label="위로 이동">▲</button>
+        <button class="left" data-dir="left" aria-label="왼쪽 이동">◀</button>
+        <button class="right" data-dir="right" aria-label="오른쪽 이동">▶</button>
+        <button class="down" data-dir="down" aria-label="아래로 이동">▼</button>
+      </div>
+
+      <p class="hint">방향키/WASD로 이동, Enter 또는 Space로 조사. 각 스테이지에서 보물과 보스를 해결하면 다음 지역으로 넘어갑니다.</p>
+    </aside>
+  </main>
+
+  <script>
+    const canvas = document.querySelector("#game");
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+
+    const ui = {
+      hp: document.querySelector("#hp"),
+      mp: document.querySelector("#mp"),
+      lv: document.querySelector("#lv"),
+      gold: document.querySelector("#gold"),
+      log: document.querySelector("#log"),
+      act: document.querySelector("#act"),
+      attack: document.querySelector("#attack"),
+      spell: document.querySelector("#spell"),
+      run: document.querySelector("#run")
+    };
+
+    const W = 20;
+    const H = 15;
+    const T = 32;
+
+    const stages = [
+      {
+        name: "1장 파도 초원",
+        item: "왕관 조각",
+        itemText: "낡은 사당에서 왕관 조각을 찾았다!\n북쪽 항구의 문장이 반짝인다.",
+        boss: { name: "해변 트리케라", hp: 36, atk: 8, def: 3, exp: 18, gold: 20, color: "#67c55b", kind: "dino" },
+        enter: "타키 포오가 파도 초원에 섰다.\n사당의 왕관 조각을 찾아 북쪽 항구로 가자.",
+        start: { x: 1, y: 13 },
+        gate: { x: 18, y: 1, to: 1, req: "boss" },
+        rows: [
+          "~~~~~~~~~~~~~~~~~~~~",
+          "~..F....m....F....G~",
+          "~..F..^^....r...F..~",
+          "~.....^^..rrrr.....~",
+          "~..m......r..F..b..~",
+          "~.....F...r.....F..~",
+          "~..rrrF...r..^^....~",
+          "~..r......r..^^..T.~",
+          "~..r..F...rrrr.....~",
+          "~..r.....m....F....~",
+          "~..rrrrr......K....~",
+          "~.....F....^^......~",
+          "~..b.......^^...B..~",
+          "~P......F..........~",
+          "~~~~~~~~~~~~~~~~~~~~"
+        ]
+      },
+      {
+        name: "2장 공룡 밀림",
+        item: "푸른 공룡 비늘",
+        itemText: "거대한 발자국 안에서 푸른 공룡 비늘을 얻었다!\n갑옷처럼 몸을 감싸 방어가 올랐다.",
+        boss: { name: "밀림 익룡", hp: 52, atk: 11, def: 4, exp: 30, gold: 34, color: "#52bfe8", kind: "ptero" },
+        enter: "밀림은 깊고 잎사귀는 별처럼 흔들린다.\n발자국을 따라가 비늘을 찾자.",
+        start: { x: 1, y: 13 },
+        gate: { x: 18, y: 1, to: 2, req: "boss" },
+        rows: [
+          "~~~~~~~~~~~~~~~~~~~~",
+          "~FFFF....rr....FFFG~",
+          "~F..F.^^.rr.^^.F..F~",
+          "~F..rrrrrrrrrrr...F~",
+          "~F..r.FFFFFF..r.F.F~",
+          "~F..r.F....F..r...F~",
+          "~F..r.F.K..F..rrrrF~",
+          "~F..r.F....F.....rF~",
+          "~F..r.FFFFFF..T..rF~",
+          "~F..r..........F..F~",
+          "~F..rrrrr..m...F..F~",
+          "~F......r......F..F~",
+          "~F..b...r...^^..B.F~",
+          "~P.....FF...^^....F~",
+          "~~~~~~~~~~~~~~~~~~~~"
+        ]
+      },
+      {
+        name: "3장 불꽃 유적",
+        item: "용암 수정",
+        itemText: "붉은 제단에서 용암 수정을 얻었다!\n회복 주문이 더 강해졌다.",
+        boss: { name: "용암 티라노", hp: 76, atk: 15, def: 6, exp: 46, gold: 55, color: "#f05a32", kind: "rex" },
+        enter: "불꽃 유적의 돌길이 뜨겁다.\n용암 수정을 얻고 티라노를 넘어야 한다.",
+        start: { x: 1, y: 13 },
+        gate: { x: 18, y: 1, to: 3, req: "boss" },
+        rows: [
+          "^^^^^^^^^^^^^^^^^^^^",
+          "^..L...r....L....G.^",
+          "^.LL...r..^^^^..LL.^",
+          "^..rrrrrrrr...r....^",
+          "^..r..L..m...r..L..^",
+          "^..r..^^^^...r.....^",
+          "^..r.....T...rrrr..^",
+          "^..r..LLLLLL....r..^",
+          "^..r.....C......r..^",
+          "^..rrrrrrrrrr...r..^",
+          "^....L......r..LL..^",
+          "^..b.....^^.r......^",
+          "^.....LL.^^.rrr.B..^",
+          "^P.................^",
+          "^^^^^^^^^^^^^^^^^^^^"
+        ]
+      },
+      {
+        name: "4장 용왕 성채",
+        item: "별빛 왕관",
+        itemText: "성채 보물고에서 별빛 왕관이 완성되었다!\n붉은 고대 드래곤에게 도전할 수 있다.",
+        boss: { name: "붉은 고대 드래곤", hp: 112, atk: 19, def: 8, exp: 90, gold: 120, color: "#c72d3e", kind: "dragon", final: true },
+        enter: "용왕 성채에 도착했다.\n왕관을 완성하고 붉은 드래곤을 만나자.",
+        start: { x: 1, y: 13 },
+        gate: null,
+        rows: [
+          "####################",
+          "#..r.....#....r..D.#",
+          "#..r.##..#..#.r..#.#",
+          "#..r..#..#..#.r..#.#",
+          "#..rrr#..#..#.rrrr.#",
+          "#....r#.....#......#",
+          "####.r####.####.####",
+          "#....r....C....r...#",
+          "#.#######...###r##.#",
+          "#.......r.T...r....#",
+          "#.##.##.rrrrrr.##..#",
+          "#..m..#....#......b#",
+          "#.....#....#..##...#",
+          "#P.........#..##...#",
+          "####################"
+        ]
+      }
+    ];
+
+    const player = {
+      x: 1, y: 13, dir: "down",
+      name: "타키 포오",
+      lv: 1, exp: 0, next: 12,
+      maxHp: 38, hp: 38,
+      maxMp: 10, mp: 10,
+      atk: 8, def: 3, gold: 15,
+      stage: 0, items: [], bosses: [], won: false
+    };
+
+    const commonEnemies = [
+      [
+        { name: "물가 도마뱀", hp: 16, atk: 5, def: 1, exp: 4, gold: 4, color: "#57d487", kind: "dino" },
+        { name: "새끼 랩터", hp: 21, atk: 7, def: 2, exp: 7, gold: 7, color: "#d7c45b", kind: "dino" }
+      ],
+      [
+        { name: "잎사귀 공룡", hp: 26, atk: 8, def: 3, exp: 9, gold: 9, color: "#41b64e", kind: "dino" },
+        { name: "작은 익룡", hp: 29, atk: 10, def: 2, exp: 12, gold: 11, color: "#49aadd", kind: "ptero" }
+      ],
+      [
+        { name: "화산 랩터", hp: 34, atk: 12, def: 4, exp: 15, gold: 16, color: "#ef7a2f", kind: "rex" },
+        { name: "돌갑옷 공룡", hp: 42, atk: 13, def: 6, exp: 19, gold: 19, color: "#9fa0a8", kind: "dino" }
+      ],
+      [
+        { name: "성채 와이번", hp: 48, atk: 15, def: 5, exp: 24, gold: 24, color: "#8e74e8", kind: "ptero" },
+        { name: "붉은 용병룡", hp: 56, atk: 17, def: 6, exp: 30, gold: 31, color: "#d64848", kind: "dragon" }
+      ]
+    ];
+
+    let mode = "map";
+    let enemy = null;
+    let message = stages[0].enter;
+    let shake = 0;
+    let flash = 0;
+    let frame = 0;
+
+    const solid = new Set(["~", "#", "^", "L"]);
+    const tileNames = {
+      "~": "바다", ".": "초원", "F": "숲", "^": "절벽", "#": "성벽",
+      "m": "마을", "r": "길", "b": "다리", "T": "보물", "K": "발자국",
+      "B": "보스", "G": "다음 지역", "L": "용암", "C": "성채", "D": "드래곤"
+    };
+
+    function stage() { return stages[player.stage]; }
+    function rows() { return stage().rows; }
+    function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+    function tileAt(x, y) { return rows()[y]?.[x] ?? "#"; }
+    function passable(x, y) { return !solid.has(tileAt(x, y)); }
+    function hasItem() { return player.items.includes(player.stage); }
+    function bossDone() { return player.bosses.includes(player.stage); }
+
+    function say(text) {
+      message = text;
+      updateUi();
+    }
+
+    function updateUi() {
+      ui.hp.textContent = `HP ${player.hp}/${player.maxHp}`;
+      ui.mp.textContent = `MP ${player.mp}/${player.maxMp}`;
+      ui.lv.textContent = `Lv ${player.lv}  EXP ${player.exp}/${player.next}`;
+      ui.gold.textContent = `${player.stage + 1}/4장  G ${player.gold}`;
+      ui.log.textContent = message;
+      const inBattle = mode === "battle";
+      ui.act.disabled = inBattle;
+      ui.attack.disabled = !inBattle;
+      ui.spell.disabled = !inBattle;
+      ui.run.disabled = !inBattle || enemy?.final;
+    }
+
+    function drawPixelText(text, x, y, size = 18, color = "#f8f3d6", align = "left") {
+      ctx.font = `700 ${size}px "Malgun Gothic", sans-serif`;
+      ctx.textAlign = align;
+      ctx.textBaseline = "top";
+      ctx.fillStyle = "#000";
+      ctx.fillText(text, x + 2, y + 2);
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, y);
+      ctx.textAlign = "left";
+    }
+
+    function rect(x, y, w, h, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    function drawWindow(x, y, w, h) {
+      rect(x, y, w, h, "#081066");
+      ctx.strokeStyle = "#f8f3d6";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    }
+
+    function drawTile(ch, x, y) {
+      const px = x * T;
+      const py = y * T;
+      if (ch === "~") drawWater(px, py, x, y);
+      else if (ch === ".") drawGrass(px, py, x, y);
+      else if (ch === "F") drawForest(px, py, x, y);
+      else if (ch === "^") drawCliff(px, py, x, y);
+      else if (ch === "#") drawWall(px, py, x, y);
+      else if (ch === "r") drawRoad(px, py, x, y);
+      else if (ch === "b") drawBridge(px, py, x, y);
+      else if (ch === "L") drawLava(px, py, x, y);
+      else {
+        drawGrass(px, py, x, y);
+        if (ch === "m") drawTown(px, py);
+        if (ch === "T") drawChest(px, py);
+        if (ch === "K") drawFoot(px, py);
+        if (ch === "B") drawBossMark(px, py);
+        if (ch === "G") drawGate(px, py);
+        if (ch === "C") drawCitadel(px, py);
+        if (ch === "D") drawDragonNest(px, py);
+      }
+      drawEdge(px, py);
+    }
+
+    function drawEdge(px, py) {
+      ctx.strokeStyle = "rgba(0,0,0,.12)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + .5, py + .5, T - 1, T - 1);
+    }
+
+    function drawWater(px, py, x, y) {
+      rect(px, py, T, T, "#173ab0");
+      const wave = (frame + x * 3 + y * 5) % 28;
+      rect(px + 3, py + 7 + (wave % 2), 9, 2, "#76d6ff");
+      rect(px + 17, py + 18 - (wave % 2), 11, 2, "#76d6ff");
+      rect(px + ((wave > 14) ? 9 : 12), py + 27, 7, 2, "#3fa6e8");
+    }
+
+    function drawGrass(px, py, x, y) {
+      rect(px, py, T, T, "#35a850");
+      rect(px + 5, py + 6, 3, 3, "#75df68");
+      rect(px + 22, py + 8, 2, 5, "#1f853d");
+      rect(px + 12, py + 21, 4, 2, "#79dd63");
+      if ((x + y) % 5 === 0) rect(px + 24, py + 23, 3, 3, "#ffd84a");
+      if ((x * 3 + y) % 7 === 0) rect(px + 8, py + 26, 2, 2, "#f8f3d6");
+    }
+
+    function drawForest(px, py, x, y) {
+      rect(px, py, T, T, "#2e9446");
+      rect(px + 4, py + 16, 5, 11, "#6b3d1f");
+      rect(px + 18, py + 15, 5, 12, "#6b3d1f");
+      rect(px + 2, py + 6, 12, 13, "#0f6635");
+      rect(px + 13, py + 4, 16, 15, "#0b7338");
+      rect(px + 8, py + 1, 12, 11, "#43b94f");
+      rect(px + 20, py + 10, 7, 5, "#6de066");
+      if ((x + y) % 3 === 0) rect(px + 4, py + 23, 6, 3, "#123b27");
+    }
+
+    function drawCliff(px, py, x, y) {
+      rect(px, py, T, T, "#6c7748");
+      ctx.fillStyle = "#6c6f78";
+      ctx.beginPath();
+      ctx.moveTo(px + 2, py + 28);
+      ctx.lineTo(px + 15, py + 4);
+      ctx.lineTo(px + 29, py + 28);
+      ctx.fill();
+      rect(px + 13, py + 10, 5, 3, "#d8d8d8");
+      rect(px + 9, py + 22, 14, 3, "#4e4e55");
+    }
+
+    function drawWall(px, py, x, y) {
+      rect(px, py, T, T, "#7d7f8f");
+      rect(px + 1, py + 1, 30, 30, "#9b9dad");
+      rect(px + 3, py + 4, 11, 9, "#777986");
+      rect(px + 17, py + 4, 11, 9, "#858796");
+      rect(px + 3, py + 17, 11, 9, "#858796");
+      rect(px + 17, py + 17, 11, 9, "#777986");
+    }
+
+    function drawRoad(px, py, x, y) {
+      rect(px, py, T, T, "#43a84c");
+      rect(px, py + 10, T, 12, "#c7a05a");
+      rect(px + 2, py + 12, 6, 2, "#e3c681");
+      rect(px + 18, py + 18, 8, 2, "#9c7840");
+      if ((x + y) % 2 === 0) rect(px + 12, py + 14, 3, 3, "#7f6236");
+    }
+
+    function drawBridge(px, py, x, y) {
+      drawWater(px, py, x, y);
+      rect(px, py + 10, T, 12, "#8c552b");
+      rect(px + 2, py + 8, 3, 16, "#5c341b");
+      rect(px + 12, py + 8, 3, 16, "#5c341b");
+      rect(px + 22, py + 8, 3, 16, "#5c341b");
+      rect(px, py + 12, T, 2, "#d09a55");
+    }
+
+    function drawLava(px, py, x, y) {
+      rect(px, py, T, T, "#591b1b");
+      rect(px + 3, py + 6, 12, 5, "#ff6a24");
+      rect(px + 16, py + 19, 13, 5, "#f5c84f");
+      rect(px + ((frame + x) % 8), py + 27, 13, 3, "#d7302f");
+    }
+
+    function drawTown(px, py) {
+      rect(px + 5, py + 15, 22, 13, "#b94f35");
+      ctx.fillStyle = "#ffd84a";
+      ctx.beginPath();
+      ctx.moveTo(px + 3, py + 16);
+      ctx.lineTo(px + 16, py + 5);
+      ctx.lineTo(px + 29, py + 16);
+      ctx.fill();
+      rect(px + 8, py + 18, 5, 5, "#7fd0ff");
+      rect(px + 17, py + 20, 5, 8, "#161616");
+    }
+
+    function drawChest(px, py) {
+      rect(px + 7, py + 14, 18, 12, "#8b4b20");
+      rect(px + 7, py + 12, 18, 5, "#c87532");
+      rect(px + 7, py + 15, 18, 3, "#ffd84a");
+      rect(px + 15, py + 12, 3, 14, "#f8f3d6");
+    }
+
+    function drawFoot(px, py) {
+      rect(px + 8, py + 17, 16, 9, "#155d31");
+      rect(px + 6, py + 12, 4, 5, "#155d31");
+      rect(px + 14, py + 9, 4, 7, "#155d31");
+      rect(px + 23, py + 12, 4, 5, "#155d31");
+    }
+
+    function drawBossMark(px, py) {
+      rect(px + 8, py + 9, 17, 17, "#77223a");
+      rect(px + 11, py + 6, 5, 6, "#ffd84a");
+      rect(px + 18, py + 6, 5, 6, "#ffd84a");
+      rect(px + 13, py + 15, 3, 3, "#000");
+      rect(px + 20, py + 15, 3, 3, "#000");
+      rect(px + 13, py + 23, 10, 2, "#000");
+    }
+
+    function drawGate(px, py) {
+      rect(px + 7, py + 7, 18, 21, "#5542b9");
+      rect(px + 10, py + 10, 12, 18, "#15154b");
+      rect(px + 13, py + 5, 6, 6, "#ffd84a");
+      rect(px + 11, py + 18, 3, 3, "#f8f3d6");
+    }
+
+    function drawCitadel(px, py) {
+      rect(px + 4, py + 13, 24, 15, "#ded8c8");
+      rect(px + 6, py + 7, 5, 8, "#ded8c8");
+      rect(px + 21, py + 7, 5, 8, "#ded8c8");
+      rect(px + 14, py + 19, 5, 9, "#111");
+      rect(px + 8, py + 16, 4, 4, "#3052c8");
+      rect(px + 21, py + 16, 4, 4, "#3052c8");
+    }
+
+    function drawDragonNest(px, py) {
+      rect(px + 5, py + 20, 22, 7, "#6b3c18");
+      rect(px + 11, py + 8, 11, 13, "#c72d3e");
+      rect(px + 20, py + 12, 6, 7, "#c72d3e");
+      rect(px + 18, py + 12, 3, 3, "#ffd84a");
+      rect(px + 23, py + 17, 6, 3, "#f8f3d6");
+    }
+
+    function drawPlayer() {
+      const px = player.x * T;
+      const py = player.y * T;
+      rect(px + 10, py + 5, 12, 10, "#f8d08b");
+      rect(px + 8, py + 14, 16, 13, "#f04d45");
+      rect(px + 10, py + 25, 5, 6, "#111a86");
+      rect(px + 18, py + 25, 5, 6, "#111a86");
+      rect(px + 9, py + 3, 14, 4, "#ffd84a");
+      rect(px + 12, py + 1, 3, 4, "#ffd84a");
+      rect(px + 19, py + 1, 3, 4, "#ffd84a");
+      if (player.dir === "left") rect(px + 10, py + 10, 2, 2, "#111");
+      else if (player.dir === "right") rect(px + 20, py + 10, 2, 2, "#111");
+      else {
+        rect(px + 13, py + 10, 2, 2, "#111");
+        rect(px + 18, py + 10, 2, 2, "#111");
+      }
+    }
+
+    function drawMap() {
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) drawTile(tileAt(x, y), x, y);
+      }
+      drawPlayer();
+      drawWindow(8, 8, 366, 74);
+      drawPixelText(stage().name, 24, 18, 19, "#ffd84a");
+      drawPixelText(`${tileNames[tileAt(player.x, player.y)] ?? "지역"}  ${player.items.length}/4 보물  ${player.bosses.length}/4 보스`, 24, 45, 15);
+      if (player.won) {
+        drawWindow(68, 150, 504, 146);
+        drawPixelText("타키 포오가 용왕 성채를 구했다!", 320, 176, 22, "#ffd84a", "center");
+        drawPixelText("드래곤과 공룡은 다시 한 섬에서 살아간다.", 320, 214, 17, "#f8f3d6", "center");
+        drawPixelText("모험 완료", 320, 248, 20, "#ffd84a", "center");
+      }
+    }
+
+    function drawEnemyBody(e, x, y) {
+      if (e.kind === "dragon") return drawDragon(x, y, e.color);
+      if (e.kind === "ptero") return drawPtero(x, y, e.color);
+      if (e.kind === "rex") return drawRex(x, y, e.color);
+      drawDino(x, y, e.color);
+    }
+
+    function drawDino(x, y, color) {
+      rect(x + 32, y + 70, 96, 48, color);
+      rect(x + 106, y + 42, 48, 42, color);
+      rect(x + 15, y + 82, 34, 18, color);
+      rect(x + 49, y + 113, 17, 38, "#31562e");
+      rect(x + 101, y + 113, 17, 38, "#31562e");
+      rect(x + 130, y + 53, 8, 8, "#111");
+      rect(x + 148, y + 70, 15, 6, "#f8f3d6");
+      rect(x + 52, y + 61, 7, 8, "#dff7bd");
+      rect(x + 69, y + 58, 7, 8, "#dff7bd");
+    }
+
+    function drawPtero(x, y, color) {
+      rect(x + 82, y + 72, 58, 34, color);
+      rect(x + 132, y + 58, 38, 29, color);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x + 88, y + 76);
+      ctx.lineTo(x + 18, y + 34);
+      ctx.lineTo(x + 58, y + 104);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + 126, y + 76);
+      ctx.lineTo(x + 214, y + 36);
+      ctx.lineTo(x + 158, y + 105);
+      ctx.fill();
+      rect(x + 152, y + 66, 7, 7, "#111");
+      rect(x + 168, y + 76, 20, 5, "#ffd84a");
+    }
+
+    function drawRex(x, y, color) {
+      rect(x + 48, y + 78, 98, 55, color);
+      rect(x + 116, y + 36, 70, 55, color);
+      rect(x + 24, y + 100, 36, 19, color);
+      rect(x + 69, y + 126, 20, 38, "#572b1f");
+      rect(x + 116, y + 126, 20, 38, "#572b1f");
+      rect(x + 151, y + 52, 9, 9, "#111");
+      rect(x + 174, y + 71, 18, 8, "#f8f3d6");
+      rect(x + 132, y + 29, 9, 9, "#ffd84a");
+      rect(x + 151, y + 29, 9, 9, "#ffd84a");
+    }
+
+    function drawDragon(x, y, color) {
+      rect(x + 22, y + 78, 134, 62, color);
+      rect(x + 120, y + 31, 62, 54, color);
+      rect(x + 154, y + 101, 66, 24, color);
+      rect(x + 42, y + 43, 62, 32, "#741727");
+      rect(x + 74, y + 21, 68, 28, "#741727");
+      rect(x + 142, y + 47, 9, 9, "#ffd84a");
+      rect(x + 179, y + 65, 20, 7, "#f8f3d6");
+      rect(x + 127, y + 19, 10, 14, "#f8f3d6");
+      rect(x + 156, y + 18, 10, 14, "#f8f3d6");
+    }
+
+    function drawBattle() {
+      rect(0, 0, canvas.width, canvas.height, flash > 0 ? "#2c0b0b" : "#050505");
+      rect(0, 280, canvas.width, 200, player.stage >= 2 ? "#3b2525" : "#173bb8");
+      rect(0, 256, canvas.width, 46, player.stage >= 2 ? "#6a3d2a" : "#2fa84f");
+      const off = shake > 0 ? rand(-4, 4) : 0;
+      drawEnemyBody(enemy, 220 + off, 90);
+      drawWindow(22, 18, 280, 104);
+      drawPixelText(enemy.name, 44, 34, 21, "#ffd84a");
+      drawPixelText(`HP ${Math.max(0, enemy.hp)}`, 44, 68, 19);
+      drawPixelText(stage().name, 44, 94, 15, "#d9e4ff");
+      drawWindow(22, 338, 596, 112);
+      drawPixelText(message.split("\n")[0] ?? "", 44, 358, 18);
+      drawPixelText(message.split("\n")[1] ?? "", 44, 386, 18);
+      drawPixelText("공격 / 마법 / 도망", 44, 418, 16, "#ffd84a");
+    }
+
+    function render() {
+      frame++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (mode === "battle") drawBattle();
+      else drawMap();
+      if (shake > 0) shake--;
+      if (flash > 0) flash--;
+      requestAnimationFrame(render);
+    }
+
+    function encounterRate(ch) {
+      if (player.won) return 0;
+      if (["m", "T", "B", "G", "C", "D", "P"].includes(ch)) return 0;
+      if (ch === "F") return 0.18;
+      if (ch === "r" || ch === "b") return 0.06;
+      return 0.1 + player.stage * 0.015;
+    }
+
+    function move(dx, dy, dir) {
+      if (mode !== "map" || player.won) return;
+      player.dir = dir;
+      const nx = player.x + dx;
+      const ny = player.y + dy;
+      if (!passable(nx, ny)) {
+        const ch = tileAt(nx, ny);
+        say(ch === "L" ? "뜨거운 용암 때문에 지나갈 수 없다." : "앞을 가로막고 있다.");
+        return;
+      }
+      player.x = nx;
+      player.y = ny;
+      const ch = tileAt(nx, ny);
+      if (ch === "m") rest();
+      else if (ch === "G") inspect();
+      else if (ch === "B" || ch === "D") inspect();
+      else if (Math.random() < encounterRate(ch)) startBattle();
+      else say(`${tileNames[ch] ?? "길"}을 지나간다.`);
+      updateUi();
+    }
+
+    function rest() {
+      player.hp = player.maxHp;
+      player.mp = player.maxMp;
+      say("마을 사람들이 공룡 모양 빵과 따뜻한 수프를 주었다.\nHP와 MP가 모두 회복되었다.");
+    }
+
+    function inspect() {
+      if (mode !== "map" || player.won) return;
+      const ch = tileAt(player.x, player.y);
+      if (ch === "m") {
+        rest();
+      } else if (ch === "T" || ch === "K" || ch === "C") {
+        getStageItem();
+      } else if (ch === "B" || ch === "D") {
+        if (!hasItem()) {
+          say(`이 지역의 보물이 아직 없다.\n먼저 ${stage().item}을 찾아야 한다.`);
+        } else if (bossDone()) {
+          say("이미 이 지역의 위협은 사라졌다.\n다음 지역으로 향하자.");
+        } else {
+          startBattle(true);
+        }
+      } else if (ch === "G") {
+        tryGate();
+      } else {
+        say("타키 포오가 주변을 살폈다.\n풀잎 사이로 작은 공룡 발자국이 이어진다.");
+      }
+      updateUi();
+    }
+
+    function getStageItem() {
+      if (hasItem()) {
+        say(`${stage().item}은 이미 챙겼다.\n이제 보스를 상대할 차례다.`);
+        return;
+      }
+      player.items.push(player.stage);
+      if (player.stage === 1) player.def += 2;
+      if (player.stage === 2) player.maxMp += 5;
+      if (player.stage === 3) {
+        player.atk += 4;
+        player.def += 2;
+      }
+      player.gold += 25 + player.stage * 15;
+      say(stage().itemText);
+    }
+
+    function tryGate() {
+      if (!bossDone()) {
+        say("다음 지역으로 가는 길이 닫혀 있다.\n이 장의 보스를 물리쳐야 한다.");
+        return;
+      }
+      const next = stage().gate?.to;
+      if (next == null) return;
+      player.stage = next;
+      player.x = stage().start.x;
+      player.y = stage().start.y;
+      player.hp = player.maxHp;
+      player.mp = player.maxMp;
+      say(stage().enter);
+    }
+
+    function startBattle(isBoss = false) {
+      mode = "battle";
+      if (isBoss) {
+        enemy = { ...stage().boss };
+        say(`${enemy.name}이 길을 막았다!`);
+      } else {
+        const list = commonEnemies[player.stage];
+        const base = list[rand(0, list.length - 1)];
+        enemy = { ...base, hp: base.hp + player.lv * 2 + player.stage * 4 };
+        say(`${enemy.name}이 나타났다!`);
+      }
+      updateUi();
+    }
+
+    function playerDamage() {
+      const itemBoost = player.items.length;
+      return Math.max(1, player.atk + itemBoost + rand(0, 5) - enemy.def);
+    }
+
+    function enemyDamage() {
+      return Math.max(1, enemy.atk + rand(0, 4) - player.def - Math.floor(player.lv / 2));
+    }
+
+    function attack() {
+      if (mode !== "battle") return;
+      const dmg = playerDamage();
+      enemy.hp -= dmg;
+      flash = 8;
+      shake = 8;
+      if (enemy.hp <= 0) winBattle(dmg);
+      else enemyTurn(`${player.name}의 공격!\n${enemy.name}에게 ${dmg} 피해.`);
+    }
+
+    function castSpell() {
+      if (mode !== "battle") return;
+      if (player.mp < 3) {
+        say("MP가 부족하다.");
+        return;
+      }
+      player.mp -= 3;
+      const heal = rand(13, 20) + player.lv * 3 + (player.items.includes(2) ? 9 : 0);
+      player.hp = Math.min(player.maxHp, player.hp + heal);
+      enemyTurn(`포오 회복 주문!\nHP가 ${heal} 회복되었다.`);
+    }
+
+    function runAway() {
+      if (mode !== "battle" || enemy.final) return;
+      if (Math.random() < 0.62) {
+        mode = "map";
+        enemy = null;
+        say("무사히 도망쳤다.");
+      } else {
+        enemyTurn("도망치지 못했다!");
+      }
+      updateUi();
+    }
+
+    function enemyTurn(prefix) {
+      const dmg = enemyDamage();
+      player.hp -= dmg;
+      shake = 6;
+      if (player.hp <= 0) {
+        player.hp = Math.max(1, Math.floor(player.maxHp / 2));
+        player.mp = Math.floor(player.maxMp / 2);
+        player.x = stage().start.x;
+        player.y = stage().start.y;
+        mode = "map";
+        enemy = null;
+        say(`${prefix}\n하지만 ${player.name}는 마을 근처에서 다시 깨어났다.`);
+      } else {
+        say(`${prefix}\n${enemy.name}의 반격! ${dmg} 피해.`);
+      }
+      updateUi();
+    }
+
+    function winBattle(lastHit) {
+      const wonBoss = enemy.name === stage().boss.name;
+      const final = enemy.final;
+      const gainedExp = enemy.exp;
+      const gainedGold = enemy.gold;
+      player.exp += gainedExp;
+      player.gold += gainedGold;
+      mode = "map";
+      enemy = null;
+      let text = `${lastHit} 피해로 승리했다!\nEXP ${gainedExp}, ${gainedGold}골드 획득.`;
+      if (wonBoss && !bossDone()) {
+        player.bosses.push(player.stage);
+        player.maxHp += 6;
+        player.hp = player.maxHp;
+        text += `\n${stage().name}의 길이 열렸다.`;
+      }
+      const levels = levelCheck();
+      if (levels.length) text += "\n" + levels.join("\n");
+      if (final) {
+        player.won = true;
+        text = "붉은 고대 드래곤이 고개를 숙였다!\n타키 포오는 네 장의 모험을 완성했다.";
+      }
+      say(text);
+      updateUi();
+    }
+
+    function levelCheck() {
+      const gained = [];
+      while (player.exp >= player.next) {
+        player.exp -= player.next;
+        player.lv++;
+        player.next += 12 + player.lv * 5;
+        player.maxHp += 9;
+        player.maxMp += 3;
+        player.atk += 3;
+        player.def += 1;
+        player.hp = player.maxHp;
+        player.mp = player.maxMp;
+        gained.push(`레벨 ${player.lv}이 되었다!`);
+      }
+      return gained;
+    }
+
+    ui.act.addEventListener("click", inspect);
+    ui.attack.addEventListener("click", attack);
+    ui.spell.addEventListener("click", castSpell);
+    ui.run.addEventListener("click", runAway);
+    document.querySelectorAll("[data-dir]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const dir = button.dataset.dir;
+        if (dir === "up") move(0, -1, "up");
+        if (dir === "down") move(0, 1, "down");
+        if (dir === "left") move(-1, 0, "left");
+        if (dir === "right") move(1, 0, "right");
+      });
+    });
+
+    window.addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", " ", "enter"].includes(key)) {
+        event.preventDefault();
+      }
+      if (mode === "battle") {
+        if (key === "a" || key === "1") attack();
+        if (key === "s" || key === "2") castSpell();
+        if (key === "d" || key === "3") runAway();
+        return;
+      }
+      if (key === "arrowup" || key === "w") move(0, -1, "up");
+      if (key === "arrowdown" || key === "s") move(0, 1, "down");
+      if (key === "arrowleft" || key === "a") move(-1, 0, "left");
+      if (key === "arrowright" || key === "d") move(1, 0, "right");
+      if (key === " " || key === "enter") inspect();
+    });
+
+    updateUi();
+    render();
+  </script>
+</body>
+</html>
